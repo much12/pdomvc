@@ -1,0 +1,42 @@
+// /**
+        //  * Routing Berdasarkan index dari variabel route
+        //  */
+
+        // /**
+        //  * @var array $url
+        //  */
+        // $url = $this->_url;
+
+        // foreach ($route as $key => $value) {
+        //     // Inisialisasi
+        //     $key = addcslashes($key, '/');
+        //     $exploding = explode('/', $value);
+
+        //     if ($key !== 'default_controller' && strtolower($default_controller) !== strtolower($controller)) {
+        //         $url = addcslashes(implode('/', $url), '/');
+
+        //         if (preg_match("/($key)/", $url)) {
+        //             $value = rtrim($value, '/');
+        //             $exploding = explode('/', $value);
+        //             $key_exploding = explode('/', $key);
+
+        //             if (count($key_exploding) == 1) {
+        //                 $controller = $exploding[0];
+
+        //                 if (isset($exploding[1])) {
+        //                     $method = $exploding[1];
+        //                 }
+
+        //                 unset($this->_url[0]);
+        //             } else {
+        //                 $controller = $exploding[0];
+
+        //                 if (isset($exploding[1])) {
+        //                     $method = $exploding[1];
+        //                 } else {
+        //                     $method = 'index';
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
