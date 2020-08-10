@@ -88,3 +88,25 @@ function DateFormat($date, $format = '')
 
     return date($format, strtotime($date));
 }
+
+/**
+ * show_404
+ * 
+ * @return mixed
+ */
+function show_404()
+{
+    http_response_code(404);
+    return require_once('app/views/error/404.php');
+}
+
+/**
+ * redirect
+ * 
+ * @param string $uri_string
+ * @return redirect
+ */
+function redirect($uri_string)
+{
+    return header('Location: ' . base_url($uri_string));
+}

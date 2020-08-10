@@ -26,6 +26,7 @@ class Init
 
     // Digunakan untuk menyimpan data pada url
     private $_url = null;
+    private $_isCustom404 = true;
 
     /**
      * Constructor
@@ -76,12 +77,29 @@ class Init
             unset($this->_url[0]);
         }
 
+        // Custom 404 Page
+        if (isset($route['404_override'])) {
+            if ($route['404_override'] == 404) {
+                $this->_isCustom404 = false;
+            } else {
+                $exploding = explode('/', $route['404_override']);
+
+                $this->controller = $exploding[0];
+
+                if (isset($exploding[1])) {
+                    $this->method = $exploding[1];
+                }
+
+                $this->_isCustom404 = true;
+            }
+        }
+
         // Instance
         if (file_exists('app/controllers/' . $this->controller . '.php')) {
             require_once 'app/controllers/' . $this->controller . '.php';
             $this->controller = new $this->controller;
         } else {
-            throw new Exception("Controller tidak ditemukan : $this->controller.php");
+            return show_404();
         }
 
         // Method
