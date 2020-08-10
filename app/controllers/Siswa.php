@@ -45,7 +45,7 @@ class Siswa extends Controller
      */
     public function delete($id)
     {
-        $data['id'] = $id;
+        $data['a.id'] = $id;
 
         $getDataSiswa = $this->siswa->getDataSiswa($data);
 
@@ -58,7 +58,9 @@ class Siswa extends Controller
             ";
         }
 
-        $delete = $this->siswa->where($data)->delete();
+        $delete = $this->siswa->where(array(
+            'id' => $id
+        ))->delete();
 
         if ($delete) {
             echo "
@@ -199,9 +201,7 @@ class Siswa extends Controller
         $data['tanggal_lahir'] = DateFormat($tanggal_lahir, 'Y-m-d');
         $data['id_kelas'] = $kelas;
 
-        $update = $this->siswa->update(array(
-            'id' => $id
-        ), $data);
+        $update = $this->siswa->where('id', $id)->update($data);
 
         if ($update) {
             echo "

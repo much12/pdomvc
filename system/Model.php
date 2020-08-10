@@ -23,6 +23,7 @@ class Model
      * @return PDO
      */
     private $_dbh;
+    private $_statement;
 
     // Untuk menyimpan data array konfigurasi
     private $_config;
@@ -39,12 +40,11 @@ class Model
 
     // Untuk menyimpan data from
     protected $table;
+    private $table_withoutalias = null;
+
     private $jointable = array();
     private $type_join = array();
     private $statement_join = array();
-
-    // Untuk menyimpan data query execute function
-    private $query;
 
     // Untuk menyimpan data array where
     private $where = array();
@@ -52,17 +52,11 @@ class Model
     // Untuk menyimpan data array or where
     private $or_where = array();
 
-    public function __construct($config = array())
+    public function __construct()
     {
         // Memberikan nilai ke variabel global _config dari function database_config
         $this->_config = database_config();
-
-        // Mengecek apakah parameter $config memiliki data lebih dari 0
-        if (count($config) > 0) {
-            $this->initialize($config);
-        } else {
-            $this->initialize();
-        }
+        $this->initialize();
     }
 
     /**
@@ -71,13 +65,10 @@ class Model
      * @param array $config
      * @return PDO
      */
-    public function initialize($config = array())
+    public function initialize()
     {
         try {
-            // Mengecek apakah parameter $config memiliki data lebih dari 0
-            if (count($config) == 0) {
-                $config = $this->_config;
-            }
+            $config = $this->_config;
 
             if (!isset($config['driver']) || empty($config['driver'])) {
                 throw new Exception("Konfigurasi driver belum diisi");
@@ -120,24 +111,17 @@ class Model
             $username = $config['username'];
             $password = $config['password'];
 
-            // Instansi PDO ke variabel global _dbh
-            $this->_dbh = new PDO("$driver:host=$host;dbname=$database", $username, $password);
+            // Deklarasi Option
+            $option = array(
+                PDO::ATTR_PERSISTENT => true,
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+            );
 
-            // Mengembalikan nilai dari variabel global _dbh
-            return $this->_dbh;
+            // Instansi PDO ke variabel global _dbh
+            $this->_dbh = new PDO("$driver:host=$host;dbname=$database", $username, $password, $option);
         } catch (PDOException $ex) {
             throw new Exception($ex->getMessage());
         }
-    }
-
-    /**
-     * getDatabaseHandler
-     * 
-     * @return object|mixed
-     */
-    public function getDatabaseHandler()
-    {
-        return $this->_dbh;
     }
 
     /**
@@ -167,6 +151,7 @@ class Model
     {
         if ($alias !== null) {
             $this->table = $from . ' ' . $alias;
+            $this->table_withoutalias = $from;
         } else {
             $this->table = $from;
         }
@@ -185,36 +170,22 @@ class Model
 
         if (is_array($this->where) && count($this->where) > 0) {
             foreach ($this->where as $key => $value) {
-                $set_val = null;
-
-                if (!is_numeric($value)) {
-                    $set_val = "'$value'";
-                } else {
-                    $set_val = $value;
-                }
+                $val_key = str_replace('.', '_', $key);
 
                 if ($key == 0) {
-                    $where .= "WHERE $key = $set_val ";
+                    $where .= "WHERE $key = :$val_key ";
                 } else {
-                    $where .= "AND $key = $set_val ";
+                    $where .= "AND $key = :$val_key ";
                 }
             }
         }
 
         if (is_array($this->or_where) && count($this->or_where) > 0) {
             foreach ($this->or_where as $key => $value) {
-                $set_val = null;
-
-                if (!is_numeric($value)) {
-                    $set_val = "'$value'";
-                } else {
-                    $set_val = $value;
-                }
-
                 if ($key == 0 && count($this->where) == 0) {
-                    $where .= "WHERE $key = $set_val ";
+                    $where .= "WHERE $key = :$key ";
                 } else {
-                    $where .= "OR $key = $set_val ";
+                    $where .= "OR $key = :$key ";
                 }
             }
         }
@@ -231,6 +202,8 @@ class Model
             }
         }
 
+        $this->query("SELECT $this->select FROM $this->table $jointable $where");
+
         return "SELECT $this->select FROM $this->table $jointable $where";
     }
 
@@ -242,7 +215,25 @@ class Model
     public function get()
     {
         try {
-            $this->query = $this->_dbh->query($this->get_compiled_select());
+            $this->get_compiled_select();
+
+            if (is_array($this->where) && count($this->where) > 0) {
+                foreach ($this->where as $key => $value) {
+                    $key = str_replace('.', '_', $key);
+
+                    $this->bind($key, $value);
+                }
+            }
+
+            if (is_array($this->or_where) && count($this->or_where) > 0) {
+                foreach ($this->or_where as $key => $value) {
+                    $key = str_replace('.', '_', $key);
+
+                    $this->bind($key, $value);
+                }
+            }
+
+            $this->execute();
 
             return $this;
         } catch (PDOException $ex) {
@@ -258,11 +249,7 @@ class Model
     public function result()
     {
         try {
-            if ($this->query !== false) {
-                return $this->query->fetchAll(PDO::FETCH_OBJ);
-            }
-
-            return null;
+            return $this->_statement->fetchAll(PDO::FETCH_OBJ);
         } catch (PDOException $ex) {
             throw new Exception($ex->getMessage());
         }
@@ -276,11 +263,7 @@ class Model
     public function row()
     {
         try {
-            if ($this->query !== false) {
-                return $this->query->fetch(PDO::FETCH_OBJ);
-            }
-
-            return null;
+            return $this->_statement->fetch(PDO::FETCH_OBJ);
         } catch (PDOException $ex) {
             throw new Exception($ex->getMessage());
         }
@@ -332,20 +315,24 @@ class Model
     {
         $column = array();
         $values = array();
+
         foreach ($data as $key => $value) {
             $column[] = $key;
-
-            if (is_numeric($value)) {
-                $values[] = $value;
-            } else {
-                $values[] = "'$value'";
-            }
+            $values[] = ":$key";
         }
 
         $build_column = implode(',', $column);
         $build_values = implode(',', $values);
 
-        return "INSERT INTO $this->table ($build_column) VALUES ($build_values)";
+        if ($this->table_withoutalias !== null) {
+            $table = $this->table_withoutalias;
+        } else {
+            $table = $this->table;
+        }
+
+        $this->query("INSERT INTO $table ($build_column) VALUES ($build_values)");
+
+        return "INSERT INTO $table ($build_column) VALUES ($build_values)";
     }
 
     /**
@@ -355,51 +342,35 @@ class Model
      * @param array $data
      * @return string
      */
-    public function get_compiled_update($where = array(), $data = array())
+    public function get_compiled_update($data = array())
     {
-        $this->where($where);
-
-        $where = null;
+        $str_where = null;
 
         if (is_array($this->where) && count($this->where) > 0) {
             foreach ($this->where as $key => $value) {
-                $set_val = null;
-
-                if (!is_numeric($value)) {
-                    $set_val = "'$value'";
-                } else {
-                    $set_val = $value;
-                }
-
                 if ($key == 0) {
-                    $where .= "WHERE $key = $set_val ";
+                    $str_where .= "WHERE $key = :$key ";
                 } else {
-                    $where .= "AND $key = $set_val ";
+                    $str_where .= "AND $key = :$key ";
                 }
             }
         }
 
-        $set = null;
-        $last_set = 0;
+        $set = array();
         foreach ($data as $key => $value) {
-            $set_val = null;
+            $set[] = "$key = :$key ";
+        }
+        $set = implode(',', $set);
 
-            if (!is_numeric($value)) {
-                $set_val = "'$value'";
-            } else {
-                $set_val = $value;
-            }
-
-            if ($last_set != count($data) - 1) {
-                $set .= "$key = $set_val, ";
-            } else {
-                $set .= "$key = $set_val ";
-            }
-
-            $last_set++;
+        if ($this->table_withoutalias !== null) {
+            $table = $this->table_withoutalias;
+        } else {
+            $table = $this->table;
         }
 
-        return "UPDATE $this->table SET $set $where";
+        $this->query("UPDATE $table SET $set $str_where");
+
+        return "UPDATE $table SET $set $str_where";
     }
 
     /**
@@ -413,23 +384,23 @@ class Model
 
         if (is_array($this->where) && count($this->where) > 0) {
             foreach ($this->where as $key => $value) {
-                $set_val = null;
-
-                if (is_numeric($set_val)) {
-                    $set_val = $value;
-                } else {
-                    $set_val = "'$value'";
-                }
-
                 if ($key == 0) {
-                    $where .= "WHERE $key = $set_val ";
+                    $where .= "WHERE $key = :$key ";
                 } else {
-                    $where .= "AND $key = $set_val ";
+                    $where .= "AND $key = :$key ";
                 }
             }
         }
 
-        return "DELETE FROM $this->table $where";
+        if ($this->table_withoutalias !== null) {
+            $table = $this->table_withoutalias;
+        } else {
+            $table = $this->table;
+        }
+
+        $this->query("DELETE FROM $table $where");
+
+        return "DELETE FROM $table $where";
     }
 
     /**
@@ -441,7 +412,13 @@ class Model
     public function insert($data = array())
     {
         try {
-            return $this->_dbh->query($this->get_compiled_insert($data));
+            $this->get_compiled_insert($data);
+
+            foreach ($data as $key => $value) {
+                $this->bind($key, $value);
+            }
+
+            return $this->execute();
         } catch (PDOException $ex) {
             throw new Exception($ex->getMessage());
         }
@@ -455,12 +432,7 @@ class Model
     public function num_rows()
     {
         try {
-            $query = $this->_dbh->query($this->get_compiled_select());
-            if ($query !== false) {
-                return $query->fetchColumn();
-            }
-
-            return 0;
+            return $this->_statement->rowCount();
         } catch (PDOException $ex) {
             throw new Exception($ex->getMessage());
         }
@@ -474,7 +446,25 @@ class Model
     public function delete()
     {
         try {
-            return $this->_dbh->query($this->get_compiled_delete());
+            $this->get_compiled_delete();
+
+            if (is_array($this->where) && count($this->where) > 0) {
+                foreach ($this->where as $key => $value) {
+                    $key = str_replace('.', '_', $key);
+
+                    $this->bind($key, $value);
+                }
+            }
+
+            if (is_array($this->or_where) && count($this->or_where) > 0) {
+                foreach ($this->or_where as $key => $value) {
+                    $key = str_replace('.', '_', $key);
+
+                    $this->bind($key, $value);
+                }
+            }
+
+            return $this->execute();
         } catch (PDOException $ex) {
             throw new Exception($ex->getMessage());
         }
@@ -487,10 +477,20 @@ class Model
      * @param array|mixed $where
      * @return mixed|PDO
      */
-    public function update($where = array(), $data = array())
+    public function update($data = array())
     {
         try {
-            return $this->_dbh->query($this->get_compiled_update($where, $data));
+            $this->get_compiled_update($data);
+
+            foreach ($this->where as $key => $value) {
+                $this->bind($key, $value);
+            }
+
+            foreach ($data as $key => $value) {
+                $this->bind($key, $value);
+            }
+
+            return $this->execute();
         } catch (PDOException $ex) {
             throw new Exception($ex->getMessage());
         }
@@ -512,5 +512,60 @@ class Model
         $this->type_join[$table] = $type;
 
         return $this;
+    }
+
+    /**
+     * query
+     * 
+     * @param string
+     * @return object $this
+     */
+    private function query($query)
+    {
+        $this->_statement = $this->_dbh->prepare($query);
+        return $this;
+    }
+
+    /**
+     * bind
+     * 
+     * @param string $param
+     * @param string $value
+     * @return object $this
+     */
+    private function bind($param, $value, $type = null)
+    {
+        if (is_null($type)) {
+            switch (true) {
+                case is_int($value):
+                    $type = PDO::PARAM_INT;
+                    break;
+
+                case is_bool($value):
+                    $type = PDO::PARAM_BOOL;
+                    break;
+
+                case is_null($value):
+                    $type = PDO::PARAM_NULL;
+                    break;
+
+                default:
+                    $type = PDO::PARAM_STR;
+            }
+        }
+
+        $this->_statement->bindValue($param, $value, $type);
+        return $this;
+    }
+
+    /**
+     * execute
+     * 
+     * @property PDOStatement
+     * @return bool
+     */
+    private function execute()
+    {
+        return $this->_statement->execute();
     }
 }

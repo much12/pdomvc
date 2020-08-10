@@ -14,8 +14,8 @@
 defined('BASEPATH') or die('No direct script access allowed!');
 
 require_once 'Init.php';
-require_once 'Model.php';
 require_once 'Controller.php';
+require_once 'Model.php';
 
 /**
  * base_url
