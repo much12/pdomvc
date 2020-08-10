@@ -13,5 +13,5 @@
 
 defined('BASEPATH') or die('No direct script access allowed!');
 
-$route['default_controller'] = 'Welcome';
+$route['default_controller'] = 'Welcome/';
 $route['404_override'] = 404; // Bisa custom <Controller>/<Method>

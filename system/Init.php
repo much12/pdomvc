@@ -26,7 +26,6 @@ class Init
 
     // Digunakan untuk menyimpan data pada url
     private $_url = null;
-    private $_isCustom404 = true;
 
     /**
      * Constructor
@@ -50,7 +49,7 @@ class Init
                 $this->controller = $default_controller;
 
                 // Mengecek apakah string tersebut memiliki index 1 yaitu sebagai method
-                if (isset($exploding[1])) {
+                if (isset($exploding[1]) && !empty($exploding[1])) {
                     $default_method = $exploding[1];
                     $this->method = $default_method;
                 }
@@ -79,18 +78,14 @@ class Init
 
         // Custom 404 Page
         if (isset($route['404_override'])) {
-            if ($route['404_override'] == 404) {
-                $this->_isCustom404 = false;
-            } else {
+            if ($route['404_override'] != 404) {
                 $exploding = explode('/', $route['404_override']);
 
                 $this->controller = $exploding[0];
 
-                if (isset($exploding[1])) {
+                if (isset($exploding[1]) && !empty($exploding[1])) {
                     $this->method = $exploding[1];
                 }
-
-                $this->_isCustom404 = true;
             }
         }
 
